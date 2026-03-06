@@ -50,14 +50,16 @@ export default function App() {
           </a>
         </header>
         <p className="description">
-          A SHACL-guided RDF resource fetcher that retrieves all triples belonging to a
-          specific IRI from RDF data sources, handling the complexities of blank nodes and
-          nested data structures. It follows the concept of the Concise Bounded Description
-          (CBD) and extends it with SHACL.
+          Fetch everything known about a specific resource from an RDF data source, including
+          nested data. Optionally provide a SHACL shape to guide exactly which
+          properties and relationships to include.
         </p>
         <UsageSection />
         <section className="test-section">
           <h2>Examples</h2>
+          <p>Here are some examples demonstrating how to use the Resource Fetcher. 
+            These show the possible inputs and the output. 
+            You can also see some of the inner workings of the algorithm.</p>
           <div className="test-list">
             {testNames.map(name => (
               <FetchDisplay key={name} name={name} />

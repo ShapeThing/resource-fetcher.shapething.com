@@ -56,16 +56,14 @@ ex:PersonShape
 `
 
 const USAGE_TS = `\
-import factory from "@rdfjs/data-model"
 import { ResourceFetcher } from "@shapething/resource-fetcher"
-import grapoi from "grapoi"
-import datasetFactory from "@rdfjs/dataset"
-import { Parser, Store } from "n3"
+import factory from "@rdfjs/data-model"
 
 // --- Fetch the resource ---
 const resourceFetcher = new ResourceFetcher({
     resourceIri: factory.namedNode("https://example.org/alice"),
     sources: ['http://example.com/sparql'],
+    shapes: { type: 'file', value: './shape.ttl' },
     engine,
 })
 
@@ -87,8 +85,10 @@ export default function UsageSection() {
 
     return (
         <section className="usage-section">
-            <h2>Installation and usage</h2>
+            <h2>Installation</h2>
+            <p>Resource Fetcher is currently packaged by <a target="_blank" href="https://jsr.io/">JSR.io</a>, it is compatible with NPM managed projects.</p>
             <InstallBlock />
+            <h2>Usage</h2>
             <div className="code-tabs">
                 <div className="code-tab-bar" role="tablist">
                     {TABS.map(t => (
