@@ -13,7 +13,7 @@ type BranchSnapshot = {
     children: BranchSnapshot[]
 }
 import { useSuspenseQuery } from '@tanstack/react-query'
-import { Component, type ReactNode, Suspense, useContext, useMemo, useRef, useState } from "react"
+import { Component, type ReactNode, Suspense, useContext, useRef, useState } from "react"
 /** @ts-expect-error No types available */
 import grapoi from "grapoi"
 import datasetFactory from "@rdfjs/dataset"
@@ -58,10 +58,17 @@ type Props = {
     name: string
 }
 
+const resourceCache = new Map<string, ReturnType<typeof fetchResource>>()
+function getResourcePromise(name: string) {
+    if (!resourceCache.has(name)) resourceCache.set(name, fetchResource(name))
+    return resourceCache.get(name)!
+}
+
 const tryToFetch = async (name: string, type: 'iri.txt' | 'input.ttl' | 'shape-iri.txt' | 'shape.ttl') =>
     fetch(`/${name}/${type}`).then(res => res.ok ? res.text() : undefined).catch(() => undefined)
 
 async function fetchResource(name: string) {
+    console.log(`Fetching resource for test "${name}"`)
     const iri = await tryToFetch(name, 'iri.txt')
     const input = await tryToFetch(name, 'input.ttl')
     const shapeIri = await tryToFetch(name, 'shape-iri.txt')
@@ -347,11 +354,10 @@ function Inner({ name }: Props) {
     const [openAt, setOpenAt] = useState(-1)
     const closeSignal = useContext(CloseAllContext)
     const expanded = openAt === closeSignal
-    const promise = useMemo(() => fetchResource(name), [name])
 
     const { data: { iri, shapeIri, events, durationMs, turtle, stepCount, nestedStepCount, shapeTurtle, nestedFetchTurtles } } = useSuspenseQuery({
         queryKey: ["fetchResource", name],
-        queryFn: () => promise,
+        queryFn: () => getResourcePromise(name),
     })
 
     const label = name.replace(/-/g, ' ')
