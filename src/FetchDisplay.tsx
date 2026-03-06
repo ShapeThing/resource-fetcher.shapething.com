@@ -1,5 +1,6 @@
 import factory from "@rdfjs/data-model"
 import { ResourceFetcher, type DebugEvent } from "@shapething/resource-fetcher"
+import { QueryEngine } from "@comunica/query-sparql-rdfjs"
 
 type BranchSnapshot = {
     id: string
@@ -16,34 +17,9 @@ import { Component, type ReactNode, Suspense, useContext, useMemo, useRef, useSt
 /** @ts-expect-error No types available */
 import grapoi from "grapoi"
 import datasetFactory from "@rdfjs/dataset"
-import { Parser } from "n3"
-import { QueryEngine } from "@comunica/query-sparql"
+import { Parser, Store } from "n3"
 import { write } from "@jeswr/pretty-turtle"
 import type { Quad } from "@rdfjs/types"
-
-const PREFIXES: Record<string, string> = {
-    rdf:      "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-    rdfs:     "http://www.w3.org/2000/01/rdf-schema#",
-    owl:      "http://www.w3.org/2002/07/owl#",
-    xsd:      "http://www.w3.org/2001/XMLSchema#",
-    sh:       "http://www.w3.org/ns/shacl#",
-    skos:     "http://www.w3.org/2004/02/skos/core#",
-    dcat:     "http://www.w3.org/ns/dcat#",
-    prov:     "http://www.w3.org/ns/prov#",
-    adms:     "http://www.w3.org/ns/adms#",
-    dcterms:  "http://purl.org/dc/terms/",
-    foaf:     "http://xmlns.com/foaf/0.1/",
-    schema:   "https://schema.org/",
-    dash:     "http://datashapes.org/dash#",
-    stsr:     "http://ontology.shapething.com/shacl-renderer#",
-    stf:      "http://ontology.shapething.com/facet#",
-    ex:       "https://example.org/",
-    skosapnl: "http://nlbegrip.nl/def/skosapnl#",
-    isothes:  "http://purl.org/iso25964/skos-thes#",
-    wdt:      "http://www.wikidata.org/prop/direct/",
-    dbc:      "http://dbpedia.org/resource/Category:",
-    faker:    "https://fakerjs.dev/",
-}
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter'
 import sparqlLang from 'react-syntax-highlighter/dist/esm/languages/prism/sparql'
 import turtleLang from 'react-syntax-highlighter/dist/esm/languages/prism/turtle'
@@ -55,16 +31,32 @@ import { CloseAllContext } from './CloseAllContext'
 
 const engine = new QueryEngine()
 
+const PREFIXES: Record<string, string> = {
+    rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    rdfs: "http://www.w3.org/2000/01/rdf-schema#",
+    owl: "http://www.w3.org/2002/07/owl#",
+    xsd: "http://www.w3.org/2001/XMLSchema#",
+    sh: "http://www.w3.org/ns/shacl#",
+    skos: "http://www.w3.org/2004/02/skos/core#",
+    dcat: "http://www.w3.org/ns/dcat#",
+    prov: "http://www.w3.org/ns/prov#",
+    adms: "http://www.w3.org/ns/adms#",
+    dcterms: "http://purl.org/dc/terms/",
+    foaf: "http://xmlns.com/foaf/0.1/",
+    schema: "https://schema.org/",
+    dash: "http://datashapes.org/dash#",
+    stsr: "http://ontology.shapething.com/shacl-renderer#",
+    stf: "http://ontology.shapething.com/facet#",
+    ex: "https://example.org/",
+    skosapnl: "http://nlbegrip.nl/def/skosapnl#",
+    isothes: "http://purl.org/iso25964/skos-thes#",
+    wdt: "http://www.wikidata.org/prop/direct/",
+    dbc: "http://dbpedia.org/resource/Category:",
+    faker: "https://fakerjs.dev/",
+}
 type Props = {
     name: string
 }
-
-const serializedSource = (value: string) => ({
-    type: "serialized",
-    value,
-    mediaType: "text/turtle",
-    baseIRI: "http://example.org/",
-})
 
 const tryToFetch = async (name: string, type: 'iri.txt' | 'input.ttl' | 'shape-iri.txt' | 'shape.ttl') =>
     fetch(`/${name}/${type}`).then(res => res.ok ? res.text() : undefined).catch(() => undefined)
@@ -82,6 +74,8 @@ async function fetchResource(name: string) {
     if (!input) {
         throw new Error("No input provided")
     }
+
+    const inputStore = new Store(new Parser().parse(input))
 
     let shapesPointer: ReturnType<typeof grapoi> | undefined = undefined
     if (shapeIri && shapes && shapeIri.startsWith('http')) {
@@ -104,8 +98,8 @@ async function fetchResource(name: string) {
     const resourceFetcher = new ResourceFetcher({
         resourceIri: factory.namedNode(iri.trim()),
         shapesPointer,
-        sources: [serializedSource(input)],
-        /** @ts-expect-error The Comunica types do not match */
+        sources: [inputStore],
+        /** @ts-expect-error somehow the types do not match */
         engine,
         debug(event) {
             events.push(event)
@@ -253,8 +247,6 @@ function NestedFetchRow({ event, turtle }: {
     turtle: string
 }) {
     const dialogRef = useRef<HTMLDialogElement>(null)
-
-    console.log(event)
 
     return (
         <div className="event event-nested">
