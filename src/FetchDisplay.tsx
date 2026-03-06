@@ -111,6 +111,7 @@ async function fetchResource(name: string) {
 
     const turtle = await write(results as unknown as Quad[], { prefixes: PREFIXES })
     const stepCount = events.filter(e => e.type === 'step-complete').length
+    const nestedStepCount = countNestedSteps(events)
 
     const nestedFetchTurtles: Record<string, string> = {}
     for (const event of events) {
@@ -134,7 +135,19 @@ async function fetchResource(name: string) {
         }
     }
 
-    return { iri: iri.trim(), shapeIri: shapeIri?.trim(), events, durationMs, turtle, stepCount, shapeTurtle, nestedFetchTurtles }
+    return { iri: iri.trim(), shapeIri: shapeIri?.trim(), events, durationMs, turtle, stepCount, nestedStepCount, shapeTurtle, nestedFetchTurtles }
+}
+
+function countNestedSteps(events: DebugEvent[]): number {
+    let count = 0
+    for (const event of events) {
+        if (event.type === 'nested-fetch') {
+            const nestedEvents = (event as Extract<DebugEvent, { type: 'nested-fetch' }>).events ?? []
+            count += nestedEvents.filter(e => e.type === 'step-complete').length
+            count += countNestedSteps(nestedEvents)
+        }
+    }
+    return count
 }
 
 function flattenBranches(branches: BranchSnapshot[], step: number, depth = 0): { branch: BranchSnapshot; depth: number; count: number }[] {
@@ -336,7 +349,7 @@ function Inner({ name }: Props) {
     const expanded = openAt === closeSignal
     const promise = useMemo(() => fetchResource(name), [name])
 
-    const { data: { iri, shapeIri, events, durationMs, turtle, stepCount, shapeTurtle, nestedFetchTurtles } } = useSuspenseQuery({
+    const { data: { iri, shapeIri, events, durationMs, turtle, stepCount, nestedStepCount, shapeTurtle, nestedFetchTurtles } } = useSuspenseQuery({
         queryKey: ["fetchResource", name],
         queryFn: () => promise,
     })
@@ -355,7 +368,7 @@ function Inner({ name }: Props) {
             >
                 <span className="status-icon pass" aria-hidden="true">✓</span>
                 <span className="test-name">{label}</span>
-                <span className="test-meta">{stepCount} {stepCount === 1 ? 'step' : 'steps'}</span>
+                <span className="test-meta">{stepCount} {stepCount === 1 ? 'step' : 'steps'}{nestedStepCount > 0 ? ` and ${nestedStepCount} nested ${nestedStepCount === 1 ? 'step' : 'steps'}` : ''}</span>
                 <span className="test-timing">({durationMs}ms on an in-memory dataset)</span>
                 <span className={`expand-arrow${expanded ? ' open' : ''}`} aria-hidden="true">›</span>
             </div>
