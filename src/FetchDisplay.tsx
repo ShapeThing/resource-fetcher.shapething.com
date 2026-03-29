@@ -1,6 +1,6 @@
 import factory from "@rdfjs/data-model"
 import { ResourceFetcher, type DebugEvent } from "@shapething/resource-fetcher"
-import { QueryEngine } from "@comunica/query-sparql-rdfjs"
+import { newEngine } from '@triplydb/speedy-memory'
 
 type BranchSnapshot = {
     id: string
@@ -24,12 +24,13 @@ import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter'
 import sparqlLang from 'react-syntax-highlighter/dist/esm/languages/prism/sparql'
 import turtleLang from 'react-syntax-highlighter/dist/esm/languages/prism/turtle'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { Bindings } from "@comunica/utils-bindings-factory"
 
 SyntaxHighlighter.registerLanguage('sparql', sparqlLang)
 SyntaxHighlighter.registerLanguage('turtle', turtleLang)
 import { CloseAllContext } from './CloseAllContext'
-
-const engine = new QueryEngine()
+import { QueryEngine } from "@comunica/query-sparql-rdfjs"
+import type { Engine } from './App'
 
 const PREFIXES: Record<string, string> = {
     rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
@@ -56,18 +57,49 @@ const PREFIXES: Record<string, string> = {
 }
 type Props = {
     name: string
+    engine: Engine
 }
 
 const resourceCache = new Map<string, ReturnType<typeof fetchResource>>()
-function getResourcePromise(name: string) {
-    if (!resourceCache.has(name)) resourceCache.set(name, fetchResource(name))
-    return resourceCache.get(name)!
+function getResourcePromise(name: string, engine: Engine) {
+    const key = `${engine}:${name}`
+    if (!resourceCache.has(key)) resourceCache.set(key, fetchResource(name, engine))
+    return resourceCache.get(key)!
 }
 
 const tryToFetch = async (name: string, type: 'iri.txt' | 'input.ttl' | 'shape-iri.txt' | 'shape.ttl') =>
     fetch(`/${name}/${type}`).then(res => res.ok ? res.text() : undefined).catch(() => undefined)
 
-async function fetchResource(name: string) {
+
+const createQueryBindingsSpeedyFast = async (store: Store) => {
+    /** @ts-expect-error types mismatch but does work */
+    const engine = newEngine(store);
+    return async (query: string) => {
+        const results = await engine.query(query, {
+            queryType: 'select'
+        });
+        const bindings = await results.toArray()
+        return bindings.map((binding) => {
+            /** @ts-expect-error types mismatch but does work */
+            return new Bindings(factory, new Map(Object.entries(binding)))
+        });
+    };
+}
+
+
+const createQueryBindingsComunicaFast = async (store: Store): Promise<(query: string) => Promise<Bindings[]>> => {
+    const engine = new QueryEngine();
+    return async (query: string) => {
+        const result = await engine.queryBindings(query, {
+            sources: [store],
+            unionDefaultGraph: true,
+            baseIRI: "http://example.org/",
+        });
+        return result.toArray() as unknown as Bindings[];
+    }
+}
+
+async function fetchResource(name: string, engine: Engine) {
     console.log(`Fetching resource for test "${name}"`)
     const iri = await tryToFetch(name, 'iri.txt')
     const input = await tryToFetch(name, 'input.ttl')
@@ -81,8 +113,13 @@ async function fetchResource(name: string) {
     if (!input) {
         throw new Error("No input provided")
     }
+    const { Store: SpeedyStore } = await import('@triplydb/data-factory');
 
-    const inputStore = new Store(new Parser().parse(input))
+    const quads = new Parser({
+        baseIRI: "http://example.org/",
+    }).parse(input).map(q => factory.quad(q.subject, q.predicate, q.object, factory.namedNode('urn:input')))
+    /** @ts-expect-error types mismatch but does work */
+    const inputStore = new SpeedyStore(quads)
 
     let shapesPointer: ReturnType<typeof grapoi> | undefined = undefined
     if (shapeIri && shapes && shapeIri.startsWith('http')) {
@@ -105,9 +142,9 @@ async function fetchResource(name: string) {
     const resourceFetcher = new ResourceFetcher({
         resourceIri: factory.namedNode(iri.trim()),
         shapesPointer,
-        sources: [inputStore],
-        /** @ts-expect-error somehow the types do not match */
-        engine,
+        graph: 'urn:input',
+        /** @ts-expect-error types mismatch but does work */
+        queryBindings: await (engine === 'speedy' ? createQueryBindingsSpeedyFast : createQueryBindingsComunicaFast)(inputStore),
         debug(event) {
             events.push(event)
         },
@@ -350,14 +387,14 @@ function CollapsibleEvent({ label, summary, children, className }: {
     )
 }
 
-function Inner({ name }: Props) {
+function Inner({ name, engine }: Props) {
     const [openAt, setOpenAt] = useState(-1)
     const closeSignal = useContext(CloseAllContext)
     const expanded = openAt === closeSignal
 
     const { data: { iri, shapeIri, events, durationMs, turtle, stepCount, nestedStepCount, shapeTurtle, nestedFetchTurtles } } = useSuspenseQuery({
-        queryKey: ["fetchResource", name],
-        queryFn: () => getResourcePromise(name),
+        queryKey: ["fetchResource", engine, name],
+        queryFn: () => getResourcePromise(name, engine),
     })
 
     const label = name.replace(/-/g, ' ')
@@ -474,7 +511,7 @@ function ErrorRow({ name, error }: { name: string; error: Error }) {
 
 // --- Public component ---
 
-export default function FetchDisplay({ name }: Props) {
+export default function FetchDisplay({ name, engine }: Props) {
     return (
         <ErrorBoundary name={name}>
             <Suspense fallback={
@@ -486,7 +523,7 @@ export default function FetchDisplay({ name }: Props) {
                     </div>
                 </div>
             }>
-                <Inner name={name} />
+                <Inner name={name} engine={engine} />
             </Suspense>
         </ErrorBoundary>
     )

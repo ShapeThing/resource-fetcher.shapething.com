@@ -8,9 +8,19 @@ import "./App.css"
 const queryClient = new QueryClient()
 const testNames = Object.keys(import.meta.glob('../public/**/iri.txt')).map(path => path.split('/')[2])
 
+export type Engine = 'speedy' | 'comunica'
+
 export default function App() {
   const [closeSignal, setCloseSignal] = useState(0)
   const closeAll = useCallback(() => setCloseSignal(n => n + 1), [])
+  const [engine, setEngine] = useState<Engine>(() => {
+    const stored = localStorage.getItem('engine')
+    return stored === 'speedy' ? 'speedy' : 'comunica'
+  })
+  const selectEngine = useCallback((e: Engine) => {
+    setEngine(e)
+    localStorage.setItem('engine', e)
+  }, [])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !document.querySelector('dialog[open]')) closeAll() }
@@ -57,12 +67,23 @@ export default function App() {
         <UsageSection />
         <section className="test-section">
           <h2>Examples</h2>
-          <p>Here are some examples demonstrating how to use the Resource Fetcher. 
-            These show the possible inputs and the output. 
+          <p>Here are some examples demonstrating how to use the Resource Fetcher.
+            These show the possible inputs and the output.
             You can also see some of the inner workings of the algorithm.</p>
+          <div className="engine-toggle">
+            <span className="engine-toggle-label">SPARQL engine:</span>
+            <button
+              className={`engine-btn${engine === 'comunica' ? ' engine-btn--active' : ''}`}
+              onClick={() => selectEngine('comunica')}
+            >Comunica</button>
+            <button
+              className={`engine-btn${engine === 'speedy' ? ' engine-btn--active' : ''}`}
+              onClick={() => selectEngine('speedy')}
+            >Speedy</button>
+          </div>
           <div className="test-list">
             {testNames.map(name => (
-              <FetchDisplay key={name} name={name} />
+              <FetchDisplay key={`${name}-${engine}`} name={name} engine={engine} />
             ))}
           </div>
         </section>
